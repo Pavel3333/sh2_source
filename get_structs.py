@@ -19,6 +19,7 @@ _STRUCT_FIELD_PARSE_TEMPLATE = r'^\s+([\w\d *]+) ([\w\d]+)\s*([\[\d\]]+)?\s*(:\s
 _SUBSTRUCT_START_TEMPLATE_1 = r'^\s*struct\s*$'
 _SUBSTRUCT_START_TEMPLATE_2 = r'^\s*{\s*$'
 _SUBSTRUCT_END_TEMPLATE = r'^\s*};\s*$'
+_FUNCTION_PARSE_TEMPLATE = r'^\s*([\w\d *]+)\(\*([\w\d ]+)\)\(([\w\d *,]+)\);'
 
 _MAIN_FUNCTION_START = """
 #include <stdio.h>
@@ -98,21 +99,32 @@ for root, directories, files in os.walk('./'):
 
 
 for structName, structData in structsData.iteritems():
+    print 'structName:', structName 
     for line in structData.split('\n')[1:-1]:
         if not isSubstructureContent(line):  # TODO: union / enum processing
             continue
 
         match = re.match(_STRUCT_FIELD_PARSE_TEMPLATE, line)
         if match:
-            pass
-            # print 'type: %s, name: %s, count: %s, bit count: %s' % (
-            #     match.group(1),
-            #     match.group(2),
-            #     match.group(3),
-            #     match.group(4)
-            # )
-        else:
-            print line
+            # """
+            print '\ttype: %s, name: %s, count: %s, bit count: %s' % (
+                match.group(1),
+                match.group(2),
+                match.group(3),
+                match.group(4)
+            )
+            # """
+            continue
+
+        match = re.match(_FUNCTION_PARSE_TEMPLATE, line)
+        if match:
+            print '\treturn type: %s, name: %s, arguments: (%s)' % (
+                match.group(1),
+                match.group(2),
+                match.group(3)
+            )
+            continue
+        print '\t' + line
 
 with open(_STRUCT_FILE_NAME, 'wb') as structsFile:
     for structDef in sorted(structsDefs):
