@@ -13,14 +13,15 @@ def writeIndented(fil, indent, data):
 
 _STRUCT_FILE_NAME = 'offsets.c'
 
-_STRUCT_DEF_TEMPLATE = r'typedef struct ([\w\d_]+);$'
-_STRUCT_START_TEMPLATE = r'^struct ([\w\d_]+)$'
-_STRUCT_END_TEMPLATE = r'^\};$'
-_STRUCT_FIELD_PARSE_TEMPLATE = r'^\s+([\w\d *]+) ([\w\d]+)\s*([\[\d\]]+)?\s*(:\s*[\d]+)?;'
-_SUBSTRUCT_START_TEMPLATE_1 = r'^\s*struct\s*$'
-_SUBSTRUCT_START_TEMPLATE_2 = r'^\s*{\s*$'
-_SUBSTRUCT_END_TEMPLATE = r'^\s*};\s*$'
+_DEFENITION_FLAGS = re.MULTILINE | re.DOTALL
+_DEFINITION_TEMPLATE = r'^(\w+) ([\w\d_]+)$.' '\{$.' '(.+?)$.' '\};'
+_SUBDEF_TEMPLATE = r'^\s*(\w+)$.' '\s*\{$.' '(.+?)$.' '\s*\};'
+
+_STRUCT_FIELD_PARSE_TEMPLATE = r'^\s+' '([\w\d *]+) ([\w\d]+)' '\s*' '([\[\d\]]+)?' '\s*' '(:\s*[\d]+)?;'
+
 _FUNCTION_PARSE_TEMPLATE = r'^\s*([\w\d *]+)\(\*([\w\d ]+)\)\(([\w\d *,]+)\);'
+
+_DEFINITION_DECLARATION_FMT = r'typedef {defType} {defName};'
 
 _MAIN_FUNCTION_START = """
 #include <stdio.h>
@@ -38,33 +39,57 @@ _MAIN_FUNCTION_END = """
 }
 """
 
-
-def isSubstructureContent(line):
-    return not any(
-        re.match(template, line)
-        for template in (
-            _SUBSTRUCT_START_TEMPLATE_1,
-            _SUBSTRUCT_START_TEMPLATE_2,
-            _SUBSTRUCT_END_TEMPLATE
-        )
-    )
-
-
-structsDefs = set()
-structsData = {}
+defsData = defaultdict(dict)
 structsFields = defaultdict(list)
 functions = defaultdict(list)
-structsOrder = []
 
 def sortStructFields():
+    structsOrder = []
     fields = structsFields.copy()
     for structName in fields.keys():
-        print 'structName:', structName
+        structIndex = 0
+        # print 'structName:', structName
         fieldsData = fields.pop(structName)
         for fieldData in fieldsData:
-            print '\tname:', fieldData['name']
-            print '\ttype:', fieldData['type']
-            
+            fieldRawType = fieldData['type'].strip(' *')
+            if fieldRawType in structsOrder:
+                structIndex = max(structIndex, structsOrder.index(fieldRawType))
+
+        # print '\tstructIndex:', structIndex
+        structsOrder.insert(structIndex, structName)
+
+def addDefenition(defType, defName, defCode):
+    currentDefsData = defsData[defType]
+    if defCode in currentDefsData:
+        return
+
+    currentDefsData[defCode] = currentDefData = {
+        'name': defName
+    }
+    
+    # yield defType, defCode, currentDefData
+
+    print '\tAdd {defType} {defName}'.format(
+        defType=defType,
+        defName=defName
+    )
+
+def addDefinitions(rawData, filename):
+    matches = re.findall(_DEFINITION_TEMPLATE, rawData, flags=_DEFENITION_FLAGS)
+    for (defType, defName, defCode) in matches:
+        defName = defName.replace('_anon', '_%s_anon' % filename[:-2])
+        defCode = defCode.replace('<unknown fundamental type (0xa510)>', 'void*')
+
+        addDefenition(defType, defName, defCode)
+        addSubDefinitions(defName, defCode)
+
+def addSubDefinitions(defName, defCode):
+    matches = re.findall(_SUBDEF_TEMPLATE, defCode, flags=_DEFENITION_FLAGS)
+    for i, (subDefType, subDefCode) in enumerate(matches):
+        subDefName = '%s_%s_%d' % (defName, subDefType, i)
+        subDefCode = subDefCode.replace('<unknown fundamental type (0xa510)>', 'void*')
+
+        addDefenition(subDefType, subDefName, subDefCode)
 
 for root, directories, files in os.walk('./'):
     if not root.endswith('/'):
@@ -78,45 +103,16 @@ for root, directories, files in os.walk('./'):
         
         print 'Processing:', path
 
-        lastFoundStructName = None
-        lastFoundStructData = ''
-
-        with open(path, 'r') as source:
-            for line in source:
-                preparedLine = line.replace('_anon', '_%s_anon' % filename[:-2]).replace('<unknown fundamental type (0xa510)>', 'void')
-                
-                if lastFoundStructName is not None:
-                    lastFoundStructData += preparedLine
-                    
-                    endMatch = re.match(_STRUCT_END_TEMPLATE, preparedLine)
-                    if endMatch is not None:
-                        # print '\tStruct %s ended' % lastFoundStructName
-                        structsData[lastFoundStructName] = lastFoundStructData
-                        lastFoundStructName = None
-                else:
-                    defMatch = re.match(_STRUCT_DEF_TEMPLATE, preparedLine)
-                    if defMatch is not None:
-                        structsDefs.add(preparedLine)
-                        continue
-                    
-                    startMatch = re.match(_STRUCT_START_TEMPLATE, preparedLine)
-                    if startMatch is None:
-                        continue
-
-                    foundStructName = startMatch.group(1)
-                    if foundStructName in structsData:
-                        continue
-
-                    # print '\tStruct %s started' % foundStructName
-                    lastFoundStructName = foundStructName
-                    lastFoundStructData = preparedLine
+        sourceData = open(path, 'r').read()
+        addDefinitions(sourceData, filename)
+        break
 
 
-for structName, structData in structsData.iteritems():
+raise NotImplementedError('111')
+for structName, defData in defsData.iteritems():
     # print 'structName:', structName 
     for line in structData.split('\n')[1:-1]:
-        if not isSubstructureContent(line):  # TODO: union / enum processing
-            continue
+        
 
         match = re.match(_STRUCT_FIELD_PARSE_TEMPLATE, line)
         if match:
@@ -156,13 +152,17 @@ for structName, structData in structsData.iteritems():
 sortStructFields()        
 
 with open(_STRUCT_FILE_NAME, 'wb') as structsFile:
-    for structDef in sorted(structsDefs):
-        writeRaw(structsFile, structDef)
+    for structName in structsData:
+        declaration = _DEFINITION_DECLARATION_FMT.format(
+            defType='struct',
+            defName=structName
+        )
+        writeNewlined(structsFile, declaration)
 
     writeRaw(structsFile, '\n\n')
     
     for structName, structData in structsData.iteritems():
-        print 'Struct %s writed' % structName
+        # print 'Struct %s writed' % structName
         writeNewlined(structsFile, structData)
 
     writeRaw(structsFile, _MAIN_FUNCTION_START)
