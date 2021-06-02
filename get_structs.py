@@ -1,5 +1,6 @@
 import os
 import re
+from collections import defaultdict
 
 def writeRaw(fil, data):
     fil.write(data) 
@@ -51,6 +52,19 @@ def isSubstructureContent(line):
 
 structsDefs = set()
 structsData = {}
+structsFields = defaultdict(list)
+functions = defaultdict(list)
+structsOrder = []
+
+def sortStructFields():
+    fields = structsFields.copy()
+    for structName in fields.keys():
+        print 'structName:', structName
+        fieldsData = fields.pop(structName)
+        for fieldData in fieldsData:
+            print '\tname:', fieldData['name']
+            print '\ttype:', fieldData['type']
+            
 
 for root, directories, files in os.walk('./'):
     if not root.endswith('/'):
@@ -99,32 +113,47 @@ for root, directories, files in os.walk('./'):
 
 
 for structName, structData in structsData.iteritems():
-    print 'structName:', structName 
+    # print 'structName:', structName 
     for line in structData.split('\n')[1:-1]:
         if not isSubstructureContent(line):  # TODO: union / enum processing
             continue
 
         match = re.match(_STRUCT_FIELD_PARSE_TEMPLATE, line)
         if match:
-            # """
+            structsFields[structName].append({  # TODO: OOP
+                'type': match.group(1),
+                'name': match.group(2),
+                'count': match.group(3),
+                'bitCount': match.group(4)
+            })
+            """
             print '\ttype: %s, name: %s, count: %s, bit count: %s' % (
                 match.group(1),
                 match.group(2),
                 match.group(3),
                 match.group(4)
             )
-            # """
+            """
             continue
 
         match = re.match(_FUNCTION_PARSE_TEMPLATE, line)
         if match:
+            functions[structName].append({  # TODO: OOP
+                'returnType': match.group(1),
+                'name': match.group(2),
+                'arguments': match.group(3)
+            })
+            """
             print '\treturn type: %s, name: %s, arguments: (%s)' % (
                 match.group(1),
                 match.group(2),
                 match.group(3)
             )
+            """
             continue
         print '\t' + line
+
+sortStructFields()        
 
 with open(_STRUCT_FILE_NAME, 'wb') as structsFile:
     for structDef in sorted(structsDefs):
