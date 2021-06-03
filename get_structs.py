@@ -16,9 +16,8 @@ _STRUCT_FILE_NAME = 'offsets.c'
 _DEFENITION_FLAGS = re.MULTILINE | re.DOTALL
 _DEFINITION_TEMPLATE = r'^(\w+) ([\w\d_]+)$.' '\{$.' '(.+?)$.' '\};'
 _DEFENITION_FIELD_TEMPLATE = r'^\s*' '([\w\d *]+)' '\s+' '([\w\d_]+)' '\s*' '([\[\d\]]+)*?' '\s*' '(:\s*[\d]+)?;$.?'
-_SUBDEF_TEMPLATE = r'^\s*(\w+)$.' '\s*\{$.' '(.+?)$.' '\s*\};$.?'
-
-_FUNCTION_PARSE_TEMPLATE = r'^\s*([\w\d *]+)\(\*([\w\d ]+)\)\(([\w\d *,]+)\);'
+_FUNCTION_PARSE_TEMPLATE   = r'^\s*' '([\w\d *]+)' '\s*' '\(\*([\w\d ]+)\)' '\s*' '\(([\w\d *,]*)\);$.?'
+_SUBDEF_TEMPLATE = r'^\s*' '(\w+)$.' '\s*' '\{$.' '(.+?)$.' '\s*' '\};$.?'
 
 _DEFINITION_DECLARATION_FMT = r'typedef {defType} {defName};'
 
@@ -57,10 +56,15 @@ def sortStructFields():
         # print '\tstructIndex:', structIndex
         structsOrder.insert(structIndex, structName)
 
+def parseTemplate(data, template, flags=_DEFENITION_FLAGS):
+    matches = re.findall(template, data, flags=flags)
+    otherData = re.sub(template, '', data, flags=flags)
+
+    return matches, otherData
+
 def parseSubDefs(defName, defCode):
     subDefsData = []
-    subDefsMatches = re.findall(_SUBDEF_TEMPLATE, defCode, flags=_DEFENITION_FLAGS)
-    otherCode = re.sub(_SUBDEF_TEMPLATE, '', defCode, flags=_DEFENITION_FLAGS)
+    subDefsMatches, otherCode = parseTemplate(defCode, _SUBDEF_TEMPLATE)
     for i, (subDefType, subDefCode) in enumerate(subDefsMatches):
         subDefName = '%s_%s_%d' % (defName, subDefType, i)
         subDefData = addDefenition(subDefType, subDefName, subDefCode)
@@ -72,8 +76,7 @@ def parseSubDefs(defName, defCode):
 
 def parseSimpleFields(defCode):
     simpleFieldsData = []
-    simpleFieldsMatches = re.findall(_DEFENITION_FIELD_TEMPLATE, defCode, flags=_DEFENITION_FLAGS)
-    otherCode = re.sub(_DEFENITION_FIELD_TEMPLATE, '', defCode, flags=_DEFENITION_FLAGS)
+    simpleFieldsMatches, otherCode = parseTemplate(defCode, _DEFENITION_FIELD_TEMPLATE)
     for fieldType, fieldName, fieldSize, fieldBitCount in simpleFieldsMatches:
         # print '\t\tfieldType: %s, fieldName: %s, fieldSize: %s, fieldBitCount: %s' % (fieldType, fieldName, fieldSize, fieldBitCount)
         simpleFieldsData.append({  # TODO: OOP
@@ -84,6 +87,19 @@ def parseSimpleFields(defCode):
         })
 
     return simpleFieldsData, otherCode
+
+
+def parseFunctions(defCode):
+    functionsData = []
+    functionsMatches, otherCode = parseTemplate(defCode, _FUNCTION_PARSE_TEMPLATE)
+    for funcType, funcName, funcArgs in functionsMatches:
+        functionsData.append({  # TODO: OOP
+            'type': funcType,
+            'name': funcName,
+            'arguments': funcArgs
+        })
+
+    return functionsData, otherCode
 
 
 def addDefenition(defType, defName, defCode):
@@ -98,21 +114,22 @@ def addDefenition(defType, defName, defCode):
         'fields': []
     }
 
-    # print '\tAdd {defType} {defName}'.format(
-    #     defType=defType,
-    #     defName=defName
-    # )
+    print '\tAdd {defType} {defName}'.format(
+        defType=defType,
+        defName=defName
+    )
     
     return currentDefData
 
 def parseDefenition(defName, defCode):
     subDefsData, simpleFieldsCode = parseSubDefs(defName, defCode)
-    simpleFieldsData, otherCode = parseSimpleFields(simpleFieldsCode)
+    simpleFieldsData, functionsCode = parseSimpleFields(simpleFieldsCode)
+    functionsData, otherCode = parseFunctions(functionsCode)
 
     if otherCode:
         print '\t\tdefName: %s, otherCode: %r' % (defName, otherCode)
 
-    return subDefsData + simpleFieldsData
+    return subDefsData + simpleFieldsData + functionsData
 
 def addDefinitions(rawData, filename):
     matches = re.findall(_DEFINITION_TEMPLATE, rawData, flags=_DEFENITION_FLAGS)
