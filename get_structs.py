@@ -15,9 +15,8 @@ _STRUCT_FILE_NAME = 'offsets.c'
 
 _DEFENITION_FLAGS = re.MULTILINE | re.DOTALL
 _DEFINITION_TEMPLATE = r'^(\w+) ([\w\d_]+)$.' '\{$.' '(.+?)$.' '\};'
-_SUBDEF_TEMPLATE = r'^\s*(\w+)$.' '\s*\{$.' '(.+?)$.' '\s*\};'
-
-_STRUCT_FIELD_PARSE_TEMPLATE = r'^\s+' '([\w\d *]+) ([\w\d]+)' '\s*' '([\[\d\]]+)?' '\s*' '(:\s*[\d]+)?;'
+_DEFENITION_FIELD_TEMPLATE = r'^\s*' '([\w\d *]+)' '\s+' '([\w\d_]+)' '\s*' '([\[\d\]]+)*?' '\s*' '(:\s*[\d]+)?;$.?'
+_SUBDEF_TEMPLATE = r'^\s*(\w+)$.' '\s*\{$.' '(.+?)$.' '\s*\};$.?'
 
 _FUNCTION_PARSE_TEMPLATE = r'^\s*([\w\d *]+)\(\*([\w\d ]+)\)\(([\w\d *,]+)\);'
 
@@ -58,21 +57,62 @@ def sortStructFields():
         # print '\tstructIndex:', structIndex
         structsOrder.insert(structIndex, structName)
 
+def parseSubDefs(defName, defCode):
+    subDefsData = []
+    subDefsMatches = re.findall(_SUBDEF_TEMPLATE, defCode, flags=_DEFENITION_FLAGS)
+    otherCode = re.sub(_SUBDEF_TEMPLATE, '', defCode, flags=_DEFENITION_FLAGS)
+    for i, (subDefType, subDefCode) in enumerate(subDefsMatches):
+        subDefName = '%s_%s_%d' % (defName, subDefType, i)
+        subDefData = addDefenition(subDefType, subDefName, subDefCode)
+        if subDefData is not None:
+            subDefsData.append(subDefData)
+
+    return subDefsData, otherCode
+
+
+def parseSimpleFields(defCode):
+    simpleFieldsData = []
+    simpleFieldsMatches = re.findall(_DEFENITION_FIELD_TEMPLATE, defCode, flags=_DEFENITION_FLAGS)
+    otherCode = re.sub(_DEFENITION_FIELD_TEMPLATE, '', defCode, flags=_DEFENITION_FLAGS)
+    for fieldType, fieldName, fieldSize, fieldBitCount in simpleFieldsMatches:
+        # print '\t\tfieldType: %s, fieldName: %s, fieldSize: %s, fieldBitCount: %s' % (fieldType, fieldName, fieldSize, fieldBitCount)
+        simpleFieldsData.append({  # TODO: OOP
+            'type': fieldType,
+            'name': fieldName,
+            'size': fieldSize,
+            'bitCount': fieldBitCount
+        })
+
+    return simpleFieldsData, otherCode
+
+
 def addDefenition(defType, defName, defCode):
     currentDefsData = defsData[defType]
     if defCode in currentDefsData:
-        return
+        return None
 
     currentDefsData[defCode] = currentDefData = {
-        'name': defName
+        'type': defType,
+        'code': defCode,
+        'name': defName,
+        'fields': []
     }
-    
-    # yield defType, defCode, currentDefData
 
-    print '\tAdd {defType} {defName}'.format(
-        defType=defType,
-        defName=defName
-    )
+    # print '\tAdd {defType} {defName}'.format(
+    #     defType=defType,
+    #     defName=defName
+    # )
+    
+    return currentDefData
+
+def parseDefenition(defName, defCode):
+    subDefsData, simpleFieldsCode = parseSubDefs(defName, defCode)
+    simpleFieldsData, otherCode = parseSimpleFields(simpleFieldsCode)
+
+    if otherCode:
+        print '\t\tdefName: %s, otherCode: %r' % (defName, otherCode)
+
+    return subDefsData + simpleFieldsData
 
 def addDefinitions(rawData, filename):
     matches = re.findall(_DEFINITION_TEMPLATE, rawData, flags=_DEFENITION_FLAGS)
@@ -80,16 +120,11 @@ def addDefinitions(rawData, filename):
         defName = defName.replace('_anon', '_%s_anon' % filename[:-2])
         defCode = defCode.replace('<unknown fundamental type (0xa510)>', 'void*')
 
-        addDefenition(defType, defName, defCode)
-        addSubDefinitions(defName, defCode)
+        defData = addDefenition(defType, defName, defCode)
+        if defData is None:
+            continue
 
-def addSubDefinitions(defName, defCode):
-    matches = re.findall(_SUBDEF_TEMPLATE, defCode, flags=_DEFENITION_FLAGS)
-    for i, (subDefType, subDefCode) in enumerate(matches):
-        subDefName = '%s_%s_%d' % (defName, subDefType, i)
-        subDefCode = subDefCode.replace('<unknown fundamental type (0xa510)>', 'void*')
-
-        addDefenition(subDefType, subDefName, subDefCode)
+        defData['fields'].extend(parseDefenition(defName, defCode))
 
 for root, directories, files in os.walk('./'):
     if not root.endswith('/'):
@@ -112,26 +147,6 @@ raise NotImplementedError('111')
 for structName, defData in defsData.iteritems():
     # print 'structName:', structName 
     for line in structData.split('\n')[1:-1]:
-        
-
-        match = re.match(_STRUCT_FIELD_PARSE_TEMPLATE, line)
-        if match:
-            structsFields[structName].append({  # TODO: OOP
-                'type': match.group(1),
-                'name': match.group(2),
-                'count': match.group(3),
-                'bitCount': match.group(4)
-            })
-            """
-            print '\ttype: %s, name: %s, count: %s, bit count: %s' % (
-                match.group(1),
-                match.group(2),
-                match.group(3),
-                match.group(4)
-            )
-            """
-            continue
-
         match = re.match(_FUNCTION_PARSE_TEMPLATE, line)
         if match:
             functions[structName].append({  # TODO: OOP
