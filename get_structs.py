@@ -38,29 +38,35 @@ _MAIN_FUNCTION_END = """
 """
 
 defsData = defaultdict(dict)
-structsFields = defaultdict(list)
-functions = defaultdict(list)
 
-def sortStructFields():
-    structsOrder = []
-    fields = structsFields.copy()
-    for structName in fields.keys():
-        structIndex = 0
-        # print 'structName:', structName
-        fieldsData = fields.pop(structName)
-        for fieldData in fieldsData:
-            fieldRawType = fieldData['type'].strip(' *')
-            if fieldRawType in structsOrder:
-                structIndex = max(structIndex, structsOrder.index(fieldRawType))
+def sortDefinitions():
+    defsOrder = []
+    for defsType, currentDefsData in defsData.iteritems():
+        for defData in currentDefsData.itervalues():
+            defIndex = len(defsOrder)
+            for fieldData in defData['fields']:
+                fieldRawName = fieldData['name'].strip(' *')
+                # print '\t\tfieldRawType:', fieldRawType
+                foundData = None
+                for i, anyDefData in enumerate(defsOrder):
+                    if fieldRawName == anyDefData['name'].strip(' *'):  # TODO: fields iteration
+                        print fieldData['name'], anyDefData['name']
+                        defIndex = min(defIndex, i)
 
-        # print '\tstructIndex:', structIndex
-        structsOrder.insert(structIndex, structName)
+            if defIndex:
+                print '\tdefName:', defData['name']
+                print '\tdefIndex:', defIndex
+            defsOrder.insert(defIndex, defData)
+
+    return defsOrder
+
 
 def parseTemplate(data, template, flags=_DEFENITION_FLAGS):
     matches = re.findall(template, data, flags=flags)
     otherData = re.sub(template, '', data, flags=flags)
 
     return matches, otherData
+
 
 def parseSubDefs(defName, defCode):
     subDefsData = []
@@ -105,21 +111,24 @@ def parseFunctions(defCode):
 def addDefenition(defType, defName, defCode):
     currentDefsData = defsData[defType]
     if defCode in currentDefsData:
-        return None
+        return currentDefsData[defCode]
 
     currentDefsData[defCode] = currentDefData = {
         'type': defType,
         'code': defCode,
         'name': defName,
-        'fields': []
+        'fields': parseDefenition(defName, defCode)
     }
 
+    """
     print '\tAdd {defType} {defName}'.format(
         defType=defType,
         defName=defName
     )
+    """
     
     return currentDefData
+
 
 def parseDefenition(defName, defCode):
     subDefsData, simpleFieldsCode = parseSubDefs(defName, defCode)
@@ -131,6 +140,7 @@ def parseDefenition(defName, defCode):
 
     return subDefsData + simpleFieldsData + functionsData
 
+
 def addDefinitions(rawData, filename):
     matches = re.findall(_DEFINITION_TEMPLATE, rawData, flags=_DEFENITION_FLAGS)
     for (defType, defName, defCode) in matches:
@@ -138,10 +148,7 @@ def addDefinitions(rawData, filename):
         defCode = defCode.replace('<unknown fundamental type (0xa510)>', 'void*')
 
         defData = addDefenition(defType, defName, defCode)
-        if defData is None:
-            continue
 
-        defData['fields'].extend(parseDefenition(defName, defCode))
 
 for root, directories, files in os.walk('./'):
     if not root.endswith('/'):
@@ -159,29 +166,9 @@ for root, directories, files in os.walk('./'):
         addDefinitions(sourceData, filename)
         break
 
+defsOrder = sortDefinitions()
 
-raise NotImplementedError('111')
-for structName, defData in defsData.iteritems():
-    # print 'structName:', structName 
-    for line in structData.split('\n')[1:-1]:
-        match = re.match(_FUNCTION_PARSE_TEMPLATE, line)
-        if match:
-            functions[structName].append({  # TODO: OOP
-                'returnType': match.group(1),
-                'name': match.group(2),
-                'arguments': match.group(3)
-            })
-            """
-            print '\treturn type: %s, name: %s, arguments: (%s)' % (
-                match.group(1),
-                match.group(2),
-                match.group(3)
-            )
-            """
-            continue
-        print '\t' + line
-
-sortStructFields()        
+raise NotImplementedError('111')        
 
 with open(_STRUCT_FILE_NAME, 'wb') as structsFile:
     for structName in structsData:
