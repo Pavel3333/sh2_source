@@ -31,8 +31,15 @@ class _BaseDefField(object):
         super(_BaseDefField, self).__init__()
 
         type_ = type_.replace('unsigned long', 'unsigned long long')
+        if name in _CPP_BUILTIN_NAMES:
+            name = '_' + name
 
-        self.__type = (defsNameAliases.get(type_) or type_)
+        rawType = self.__getRawType(type_)
+        typeAlias = defsNameAliases.get(rawType)
+        if typeAlias is not None:
+            type_ = type_.replace(rawType, typeAlias)
+
+        self.__type = type_
         self.__name = name
 
     def __iter__(self):
@@ -51,6 +58,10 @@ class _BaseDefField(object):
         return self.__type
 
     @property
+    def rawType(self):
+        return self.__getRawType(self.__type)
+
+    @property
     def isPointer(self):
         return '*' in self.__type
 
@@ -61,6 +72,10 @@ class _BaseDefField(object):
     @property
     def fieldType(self):
         raise NotImplementedError
+
+    @staticmethod
+    def __getRawType(type_):
+        return type_.strip(' *')
 
 
 class SubDefinition(_BaseDefField):
@@ -77,7 +92,7 @@ class SimpleField(_BaseDefField):
     CODE_PATTERN = r'^\s*' '([\w\d *]+)' '\s+' '([\w\d_]+)' '(\s*[\[\d\]]+)*?' '(\s*:\s*[\d]+)?;$.?'
     _CODE_FMT = '{type} {name}{size}{bitCount};'
     _REPR_FMT = 'Field "{name}" with type {type} that have size "{size}" and bit count "{bitCount}"'
-    _SLOTS = ('type', 'name', 'size', 'bitCount')
+    _SLOTS = ('type', 'rawType', 'name', 'size', 'bitCount')
 
     def __init__(self, type_, name, size=None, bitCount=None):
         super(SimpleField, self).__init__(type_, name)
@@ -102,7 +117,7 @@ class FunctionField(_BaseDefField):
     CODE_PATTERN = r'^\s*' '([\w\d *]+)' '\s*' '\(\*([\w\d ]+)\)' '\s*' '\(([\w\d *,]*)\);$.?'
     _CODE_FMT = '{type}(*{name})({arguments});'
     _REPR_FMT = 'Function "{name}" that returns {type} with arguments ({arguments})'
-    _SLOTS = ('type', 'name', 'arguments')
+    _SLOTS = ('type', 'rawType', 'name', 'arguments')
 
     def __init__(self, type_, name, arguments):
         super(FunctionField, self).__init__(type_, name)
@@ -142,6 +157,11 @@ class EnumField(_BaseDefField):
     def delimiter(self):
         return self.__delimiter
 
+
+_CPP_BUILTIN_NAMES = {
+    'new', 'delete', 'typedef', 'enum', 'struct', 'union',
+    'char', 'int', 'float', 'double', 'try', 'catch', 'throw'
+}
 
 _DEFINITIONS_FILE_NAME = 'defs/definitions.cpp'
 
@@ -328,7 +348,6 @@ for root, directories, files in os.walk('./'):
         matches, _ = parsePattern(sourceData, _DEFINITION_PATTERN)
         for (defType, defName, enumType, defCode) in matches:
             addDefinition(defType, defName, defCode, enumType)
-        break
 
 for defsType, currentDefsData in defsData.iteritems():
     for defData in currentDefsData.values():
