@@ -61,6 +61,10 @@ class _BaseDefField(object):
     def rawType(self):
         return self.__getRawType(self.__type)
 
+    @rawType.setter
+    def rawType(self, value):
+        self.__type = self.__type.replace(self.rawType, value)
+
     @property
     def isPointer(self):
         return '*' in self.__type
@@ -191,8 +195,8 @@ _MAIN_FUNCTION_END = """
 }
 """
 
-defsData = defaultdict(dict)
-defsDataByNames = {}
+defsDataByName = {}
+defsDataByTypeAndCode = {}
 defsDeps = {}
 defsNameAliases = {}
 
@@ -206,23 +210,29 @@ def getDefDependencies(defData):
     defDeps = {
         field.type
         for field in defData['fields']
-        if not field.isPointer and field.type in defsDataByNames
+        if not field.isPointer and field.type in defsDataByName
     }
-    # print defData['name'], defDeps
 
     for fieldName in set(defDeps):
-        defDeps |= getDefDependencies(defsDataByNames[fieldName])
+        defDeps |= getDefDependencies(defsDataByName[fieldName])
 
     defsDeps[defName] = defDeps
 
     return defDeps
 
 
+def getDefFieldsCode(defData):
+    return ''.join('\t%s\n' % field.code for field in defData['fields']).rstrip()
+
+
+def getDefCode(defData):
+    defDataCopy = defData.copy()
+    defDataCopy['fieldsCode'] = getDefFieldsCode(defData)
+    return SubDefinition._CODE_FMT.format(**defDataCopy)
+
+
 def sortDefinitions():
     defsOrder = []
-    for defsType, currentDefsData in defsData.iteritems():
-        for defData in currentDefsData.itervalues():
-            getDefDependencies(defData)
 
     def getDefIndex(defData):
         defName = defData['name']
@@ -241,19 +251,16 @@ def sortDefinitions():
         return None
 
     while True:
-        remains = len(defsDataByNames) - len(defsOrder)
+        remains = len(defsDataByName) - len(defsOrder)
         if not remains:
             break
 
-        # print '\tremains:', remains
-
-        for defData in defsDataByNames.itervalues():
+        for defData in defsDataByName.itervalues():
             if defData in defsOrder:
                 continue
                 
             defIndex = getDefIndex(defData)
             if defIndex is not None:
-                # print '\t\tadd {name} by index {index}'.format(name=defData['name'], index=defIndex)
                 defsOrder.insert(defIndex, defData)
 
     return defsOrder
@@ -286,20 +293,25 @@ def parseFieldsCode(code, fieldCls):
     return data, otherCode
 
 
+def aliasDefName(aliasName, realName):
+    if aliasName != realName:
+        defsNameAliases[aliasName] = realName
+        defsDataByName.pop(aliasName, None)
+
+
 def addDefinition(defType, name, fieldsCode, enumType=None):
-    currentDefsData = defsData[defType]
-
-    defData = defsDataByNames.get(name) or currentDefsData.get(fieldsCode)
+    defData = defsDataByName.get(name)
     if defData is not None:
-        defName = defData['name']
-        if name != defName:
-            defsNameAliases[name] = defName
+        return defData
 
+    defData = defsDataByTypeAndCode.get((defType, fieldsCode))
+    if defData is not None:
+        aliasDefName(name, defData['name'])
         return defData
 
     subDefsData, simpleFieldsCode = parseSubDefs(name, fieldsCode)
 
-    defData = currentDefsData[fieldsCode] = defsDataByNames[name] = {
+    defData = defsDataByName[name] = defsDataByTypeAndCode[(defType, fieldsCode)] = {
         'type': defType,
         'enumType': enumType or '',
         'name': name,
@@ -339,7 +351,7 @@ for root, directories, files in os.walk('./'):
 
         path = (root + filename)[len('./'):]
         
-        # print 'Processing:', path
+        print 'Processing:', path
 
         sourceData = open(path, 'r').read()
         sourceData = sourceData.replace('_anon', '_%s_anon' % filename[:-2])
@@ -349,9 +361,33 @@ for root, directories, files in os.walk('./'):
         for (defType, defName, enumType, defCode) in matches:
             addDefinition(defType, defName, defCode, enumType)
 
-for defsType, currentDefsData in defsData.iteritems():
-    for defData in currentDefsData.values():
-        defData['fields'] = defData['fields'] + parseDefFields(defData)
+def postProcessDefinitions():
+    defsDataByTypeAndCode.clear()
+
+    # Fields primary parsing
+    for defName, defData in defsDataByName.iteritems():
+        defData['fields'] += parseDefFields(defData)
+        defData['fieldsCode'] = getDefFieldsCode(defData)
+        defsDataByTypeAndCode[(defData['type'], defData['fieldsCode'])] = defData
+
+    # Filter all duplicates with same code
+    for defName, defData in defsDataByName.items():
+        sameCodeDefData = defsDataByTypeAndCode.get((defData['type'], defData['fieldsCode']))
+        if sameCodeDefData is not None:
+            aliasDefName(defName, sameCodeDefData['name'])
+
+    # Rename all fields type to its real (not aliased) names
+    for defData in defsDataByName.values():
+        for field in defData['fields']:
+            realFieldType = defsNameAliases.get(field.rawType)
+            if realFieldType is not None:
+                field.rawType = realFieldType
+
+    # Build dependencies tree
+    for defName, defData in defsDataByName.iteritems():
+        getDefDependencies(defData)
+
+postProcessDefinitions()
 
 sortedDefs = sortDefinitions()
 with open(_DEFINITIONS_FILE_NAME, 'wb') as defsFile:
@@ -366,9 +402,7 @@ with open(_DEFINITIONS_FILE_NAME, 'wb') as defsFile:
 
     for defData in sortedDefs:
         # print 'Definition %s writed' % defData['name']
-        reprDefData = defData.copy()
-        reprDefData['fieldsCode'] = ''.join('\t%s\n' % field.code for field in defData['fields']).rstrip()
-        writeNewlined(defsFile, SubDefinition._CODE_FMT.format(**reprDefData))
+        writeNewlined(defsFile, getDefCode(defData))
         writeRaw(defsFile, '\n')
 
     writeRaw(defsFile, _MAIN_FUNCTION_START)
