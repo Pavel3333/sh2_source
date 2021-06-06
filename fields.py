@@ -86,7 +86,7 @@ class SubDefinition(_BaseDefField):
 class SimpleField(_BaseDefField):
     CODE_PATTERN = r'^\s*' '([\w\d *]+)' '\s+' '([\w\d_]+)' '(\s*[\[\d\]]+)*?' '(\s*:\s*[\d]+)?;$.?'
     _CODE_FMT = '{type} {name}{size}{bitCount};'
-    _REPR_FMT = 'Field "{name}" with type {type} that have size "{size}" and bit count "{bitCount}"'
+    _REPR_FMT = 'Field "{name}" with type "{type}" that have size "{size}" and bit count "{bitCount}"'
     _SLOTS = ('type', 'rawType', 'name', 'size', 'bitCount')
 
     def __init__(self, type_, name, size=None, bitCount=None):

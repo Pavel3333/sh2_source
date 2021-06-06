@@ -8,9 +8,9 @@ DEFINITIONS_FILE_NAME = 'defs/definitions.cpp'
 _DEFINITION_FLAGS = re.MULTILINE | re.DOTALL
 _DEFINITION_PATTERN = r'^(\w+) ([\w\d_]+)(\s*:\s*[\w\d ]+\s*)?$.' '\{$.' '(.+?)$.' '\};'
 
-defsDataByName = {}
-defsDataByTypeAndCode = {}
-defsDeps = {}
+defDataByName = {}
+defDataByTypeAndCode = {}
+defDepsByName = {}
 
 
 def writeRaw(fil, data):
@@ -27,20 +27,20 @@ def writeIndented(fil, indent, data):
 
 def getDefDependencies(defData):
     defName = defData['name']
-    defDeps = defsDeps.get(defName)
+    defDeps = defDepsByName.get(defName)
     if defDeps is not None:
         return defDeps
 
     defDeps = {
         field.type
         for field in defData['fields']
-        if not field.isPointer and field.type in defsDataByName
+        if not field.isPointer and field.type in defDataByName
     }
 
     for fieldName in set(defDeps):
-        defDeps |= getDefDependencies(defsDataByName[fieldName])
+        defDeps |= getDefDependencies(defDataByName[fieldName])
 
-    defsDeps[defName] = defDeps
+    defDepsByName[defName] = defDeps
 
     return defDeps
 
@@ -79,22 +79,22 @@ def parseFieldsCode(code, fieldCls):
 def aliasDefName(aliasName, realName):
     if aliasName != realName:
         defsNameAliases[aliasName] = realName
-        defsDataByName.pop(aliasName, None)
+        defDataByName.pop(aliasName, None)
 
 
 def addDefinition(defType, name, fieldsCode, enumType=None):
-    defData = defsDataByName.get(name)
+    defData = defDataByName.get(name)
     if defData is not None:
         return defData
 
-    defData = defsDataByTypeAndCode.get((defType, fieldsCode))
+    defData = defDataByTypeAndCode.get((defType, fieldsCode))
     if defData is not None:
         aliasDefName(name, defData['name'])
         return defData
 
     subDefsData, simpleFieldsCode = parseSubDefs(name, fieldsCode)
 
-    defData = defsDataByName[name] = defsDataByTypeAndCode[(defType, fieldsCode)] = {
+    defData = defDataByName[name] = defDataByTypeAndCode[(defType, fieldsCode)] = {
         'type': defType,
         'enumType': enumType or '',
         'name': name,
@@ -125,29 +125,29 @@ def parseDefFields(defData):
 
 
 def postProcessDefinitions():
-    defsDataByTypeAndCode.clear()
+    defDataByTypeAndCode.clear()
 
     # Fields primary parsing
-    for defName, defData in defsDataByName.iteritems():
+    for defName, defData in defDataByName.iteritems():
         defData['fields'] += parseDefFields(defData)
         defData['fieldsCode'] = getDefFieldsCode(defData)
-        defsDataByTypeAndCode[(defData['type'], defData['fieldsCode'])] = defData
+        defDataByTypeAndCode[(defData['type'], defData['fieldsCode'])] = defData
 
     # Filter all duplicates with same code
-    for defName, defData in defsDataByName.items():
-        sameCodeDefData = defsDataByTypeAndCode.get((defData['type'], defData['fieldsCode']))
+    for defName, defData in defDataByName.items():
+        sameCodeDefData = defDataByTypeAndCode.get((defData['type'], defData['fieldsCode']))
         if sameCodeDefData is not None:
             aliasDefName(defName, sameCodeDefData['name'])
 
     # Rename all fields type to its real (not aliased) names
-    for defData in defsDataByName.values():
+    for defData in defDataByName.values():
         for field in defData['fields']:
             realFieldType = defsNameAliases.get(field.rawType)
             if realFieldType is not None:
                 field.rawType = realFieldType
 
     # Build dependencies tree
-    for defName, defData in defsDataByName.iteritems():
+    for defName, defData in defDataByName.iteritems():
         getDefDependencies(defData)
 
 def sortDefinitions():
@@ -155,7 +155,7 @@ def sortDefinitions():
 
     def getDefIndex(defData):
         defName = defData['name']
-        defDeps = defsDeps[defName]
+        defDeps = defDepsByName[defName]
         processedDefs = set()
         if not defDeps - processedDefs:
             return 0
@@ -170,11 +170,11 @@ def sortDefinitions():
         return None
 
     while True:
-        remains = len(defsDataByName) - len(defsOrder)
+        remains = len(defDataByName) - len(defsOrder)
         if not remains:
             break
 
-        for defData in defsDataByName.itervalues():
+        for defData in defDataByName.itervalues():
             if defData in defsOrder:
                 continue
                 
