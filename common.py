@@ -13,6 +13,11 @@ defDataByTypeAndCode = {}
 defDepsByName = {}
 
 
+def getIndented(level, data):
+    indent = '\t' * level
+    return indent + data.replace('\n', '\n' + indent)
+
+
 def writeRaw(fil, data):
     fil.write(data) 
 
@@ -21,8 +26,16 @@ def writeNewlined(fil, data):
     writeRaw(fil, data + '\n') 
 
 
-def writeIndented(fil, indent, data):
-    writeNewlined(fil, ('\t' * indent) + data)
+def writeIndented(fil, level, data):
+    writeNewlined(fil, getIndented(level, data))
+
+
+def printRaw(*args):
+    print ' '.join(args)
+
+
+def printIndented(level, *args):
+    printRaw(getIndented(level, *args))
 
 
 def getDefDependencies(defData):
@@ -46,7 +59,16 @@ def getDefDependencies(defData):
 
 
 def getDefFieldsCode(defData):
-    return ''.join('\t%s\n' % field.code for field in defData['fields']).rstrip()
+    return getIndented(1, ''.join(
+        '%s\n' % field.code
+        for field in defData['fields']).rstrip()
+    )
+
+
+def getDefCode(defData):
+    defDataCopy = defData.copy()
+    defDataCopy['fieldsCode'] = getDefFieldsCode(defData)
+    return SubDefinition._CODE_FMT.format(**defDataCopy)
 
 
 def parsePattern(data, pattern, flags=_DEFINITION_FLAGS):
@@ -101,13 +123,6 @@ def addDefinition(defType, name, fieldsCode, enumType=None):
         'fields': subDefsData,
         'fieldsCode': simpleFieldsCode
     }
-
-    """
-    print '\tAdd {defType} {defName}'.format(
-        defType=defType,
-        defName=defName
-    )
-    """
     
     return defData
 

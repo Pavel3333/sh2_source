@@ -26,12 +26,6 @@ _MAIN_FUNCTION_END = """
 """
 
 
-def getDefCode(defData):
-    defDataCopy = defData.copy()
-    defDataCopy['fieldsCode'] = getDefFieldsCode(defData)
-    return SubDefinition._CODE_FMT.format(**defDataCopy)
-
-
 sortedDefs = sortDefinitions()
 with open(DEFINITIONS_FILE_NAME, 'wb') as defsFile:
     for defData in sortedDefs:

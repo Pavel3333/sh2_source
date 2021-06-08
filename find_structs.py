@@ -5,12 +5,12 @@ from common import *
 _POINTER_OR_ARRAY_CHARS = '*[]'
 _DEFS_SIZES_FILENAME = 'defs/out.json'
 _OPTIONS = """Options:
-    0) Show this help message
-    1) Choose range of structs sizes
-    2) Choose field types
-    3) Find definitions by entered params
-    4) Clear params
-    5) Exit"""
+	0) Show this help message
+	1) Choose range of structs sizes
+	2) Choose field types
+	3) Find definitions by entered params
+	4) Clear params
+	5) Exit"""
 
 defSizeByName = json.load(open(_DEFS_SIZES_FILENAME, 'r'))
 
@@ -26,7 +26,7 @@ def printHelp():
 
 def findDefs():
     if all(not param for param in queryParams.itervalues()):
-        print '\tEmpty request query'
+        printIndented(1, 'Empty request query')
         return
 
     def isSuitableField(fields, fieldIndex, fieldTypes):
@@ -79,12 +79,12 @@ def findDefs():
 
     foundDefs = filter(isSuitableDefinition, defDataByName.itervalues())
     if not foundDefs:
-        print '\tNo any definitions found'
+        printIndented(1, 'No any definitions found')
         return
 
-    print '\tFound definitions:'
+    printIndented(1, 'Found definitions:')
     for defData in foundDefs:
-        print '\t\tDefinition "{name}" with type "{type}"'.format(**defData)
+        printIndented(2, getDefCode(defData))
 
 
 printHelp()
@@ -96,15 +96,14 @@ while True:
         if option == 0:
             printHelp()
         elif option == 1:
-            minBound = input('\tPlease type the size min bound: ')
-            maxBound = input('\tPlease type the size max bound: ')
+            minBound = input(getIndented(1, 'Please type the size min bound: '))
+            maxBound = input(getIndented(1, 'Please type the size max bound: '))
             queryParams['defSizeBounds'] = (minBound, maxBound)
         elif option == 2:
-            fieldIndex = input('\tPlease type the field index: ')
-            fieldTypes = tuple(filter(
-                bool,
-                raw_input('\tPlease type the field types (separated by space): ').split()
-            ))
+            fieldIndex = input(getIndented(1, 'Please type the field index: '))
+            fieldTypes = tuple(filter(bool, raw_input(getIndented(
+                1, 'Please type the field types (separated by space): '
+            )).split()))
             queryParams['fieldsParams'].add((fieldIndex, fieldTypes))
         elif option == 3:
             findDefs()
