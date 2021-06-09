@@ -108,7 +108,8 @@ while True:
         elif option == 3:
             findDefs()
         elif option == 4:
-            queryParams.clear()
+            queryParams['fieldsParams'].clear()
+            queryParams['defSizeBounds'] = None
         elif option == 5:
             print 'Good bye!'
             break

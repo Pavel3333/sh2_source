@@ -3,9 +3,15 @@ from common import *
 
 _DEFINITION_DECLARATION_FMT = r'{defType} {defName};'
 
-_MAIN_FUNCTION_START = """
+_HEADER = """
 #include <iostream>
 #include <fstream>
+
+#pragma pack(push, 1)
+"""
+
+_MAIN_FUNCTION_START = """
+#pragma pack(pop)
 
 int main() {
     std::ofstream out("out.json", std::ios::binary);
@@ -36,6 +42,7 @@ with open(DEFINITIONS_FILE_NAME, 'wb') as defsFile:
         writeNewlined(defsFile, declaration)
 
     writeRaw(defsFile, '\n')
+    writeNewlined(defsFile, _HEADER)
 
     for defData in sortedDefs:
         # print 'Definition %s writed' % defData['name']
