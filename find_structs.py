@@ -30,7 +30,11 @@ def findDefs():
         return
 
     def isSuitableField(fields, fieldIndex, fieldTypes):
-        if fieldIndex < len(fields):
+        fieldsCount = len(fields)
+        if fieldIndex < 0:
+            fieldIndex = fieldsCount + fieldIndex
+
+        if 0 <= fieldIndex < fieldsCount:
             foundField = fields[fieldIndex]
             for fieldType in fieldTypes:
                 fieldRawType = fieldType.strip(' ' + _POINTER_OR_ARRAY_CHARS)
