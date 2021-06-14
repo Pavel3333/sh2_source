@@ -214,7 +214,7 @@ for root, directories, files in os.walk('./'):
 
         sourceData = open(path, 'r').read()
         sourceData = sourceData.replace('_anon', '_%s_anon' % filename[:-2])
-        sourceData = sourceData.replace('<unknown fundamental type (0xa510)>', 'void*')
+        sourceData = sourceData.replace('<unknown fundamental type (0xa510)>', '__m128')
 
         matches, _ = parsePattern(sourceData, _DEFINITION_PATTERN)
         for (defType, defName, enumType, defCode) in matches:
