@@ -3,7 +3,7 @@ import json
 from common import *
 
 _POINTER_OR_ARRAY_CHARS = '*[]'
-_DEFS_SIZES_FILENAME = 'defs/out.json'
+_DEFS_INFO_FILENAME = 'defs/out.json'
 _OPTIONS = """Options:
 	0) Show this help message
 	1) Choose range of structs sizes
@@ -12,7 +12,7 @@ _OPTIONS = """Options:
 	4) Clear params
 	5) Exit"""
 
-defSizeByName = json.load(open(_DEFS_SIZES_FILENAME, 'r'))
+defsInfo = json.load(open(_DEFS_INFO_FILENAME, 'r'))
 
 queryParams = {
     'fieldsParams': set(),
@@ -70,8 +70,8 @@ def findDefs():
             if defData['type'] == 'enum':
                 return False
 
-            defSize = defSizeByName[defData['name']]
-            if not bounds[0] <= defSize <= bounds[1]:
+            defInfo = defsInfo[defData['name']]
+            if not bounds[0] <= defInfo['size'] <= bounds[1]:
                 return False
 
         fieldsParams = queryParams['fieldsParams']
