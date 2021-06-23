@@ -18,12 +18,18 @@ def getIndented(level, data):
     return indent + data.replace('\n', '\n' + indent)
 
 
-def writeRaw(fil, data):
+def write(fil, data, newLined, indentLevel=0):
+    if indentLevel:
+        data = getIndented(indentLevel, data)
+    
+    if newLined:
+        data += '\n'
+
     fil.write(data) 
 
 
 def writeNewlined(fil, data):
-    writeRaw(fil, data + '\n') 
+    write(fil, data, newLined=True) 
 
 
 def writeIndented(fil, level, data):
@@ -63,6 +69,15 @@ def getDefFieldsCode(defData):
         '%s\n' % field.code
         for field in defData['fields']).rstrip()
     )
+
+
+def getDefFieldsMapping(defFields):
+    fields = {}
+    for field in defFields:
+        assert field.name not in fields, 'Duplicated field name %s in def %s' % (field.name, defData['name'])
+        fields[field.name] = field
+
+    return fields
 
 
 def getDefCode(defData):
@@ -116,11 +131,13 @@ def addDefinition(defType, name, fieldsCode, enumType=None):
 
     subDefsData, simpleFieldsCode = parseSubDefs(name, fieldsCode)
 
+
     defData = defDataByName[name] = defDataByTypeAndCode[(defType, fieldsCode)] = {
         'type': defType,
         'enumType': enumType or '',
         'name': name,
         'fields': subDefsData,
+        'fieldsByName': getDefFieldsMapping(subDefsData),
         'fieldsCode': simpleFieldsCode
     }
     
@@ -145,6 +162,7 @@ def postProcessDefinitions():
     # Fields primary parsing
     for defName, defData in defDataByName.iteritems():
         defData['fields'] += parseDefFields(defData)
+        defData['fieldsByName'] = getDefFieldsMapping(defData['fields'])
         defData['fieldsCode'] = getDefFieldsCode(defData)
         defDataByTypeAndCode[(defData['type'], defData['fieldsCode'])] = defData
 

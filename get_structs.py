@@ -1,36 +1,113 @@
 from common import *
 
 
-_DEFINITION_DECLARATION_FMT = r'{defType} {defName};'
+def getString(data):
+    return '"{data}"'.format(data=data.replace('"', '\\"'))
 
-_HEADER = """
-#include <iostream>
-#include <fstream>
-#include <xmmintrin.h>
+class CppSourceWriter(object):
+    _OUT_FILE = 'out.json'
+    _OUT_IO = 'out'
+    _COUT_IO = 'std::cout'
+    _NEWLINE = 'std::endl'
 
-#pragma pack(push, 1)
-"""
+    _INCLUDES = ('iostream', 'fstream', 'xmmintrin.h')
 
-_PRINT_FMT = getIndented(1, r'out << {data} << std::endl;')
+    _INCLUDE_FMT = r'#include <{header}>'
+    _PRAGMA_FMT = r'#pragma {pragmaType}({pragmaArgs})'
+    _DEFINITION_DECLARATION_FMT = r'{defType} {defName};'
+    _FIELD_FMT = r'"{indent}{fieldName}: " << {fieldValue} << {delimiter}'
 
-_MAIN_FUNCTION_START = """
-#pragma pack(pop)
+    def __init__(self, sourceName):
+        super(CppSourceWriter, self).__init__()
 
-int main() {
-    std::ofstream out("out.json", std::ios::binary);
-"""
+        self.__file = None
+        self.__indentLevel = 0
+        self.__sortedDefs = {}
+        self.__sourceName = sourceName
 
-_FIELD_FMT = r'"{indent}\"{fieldName}\": " << {fieldValue} << "{delimiter}"'
+    def __enter__(self):
+        self.__file = open(self.__sourceName, 'wb')
+        self.__indentLevel = 0
+        self.__sortedDefs = sortDefinitions()
 
-_MAIN_FUNCTION_END = """
-    out.close();
+        return self
 
-    std::cout << "Definitions info wroted to \'out.json\'" << std::endl;
-    std::cout << "---DONE---" << std::endl;
+    def __exit__(self, *args):
+        self.__file.close()
+        self.__file = None
+        self.__sortedDefs = {}
 
-    return 0;
-}
-"""
+        print '{fileName} was generated'.format(fileName=self.__sourceName)
+        print '---DONE---'
+
+    def write(self, data, newLined=True, indentLevel=None):
+        write(
+            self.__file, data,
+            newLined=newLined,
+            indentLevel=indentLevel or self.__indentLevel
+        )
+
+    def newLine(self):
+        self.write('', indentLevel=0)
+
+    def pragma(self, pragmaType, pragmaArgs):
+        self.write(self._PRAGMA_FMT.format(
+            pragmaType=pragmaType, pragmaArgs=pragmaArgs
+        ))
+
+    def addIncludes(self):
+        for headerFileName in self._INCLUDES:
+            self.__include(headerFileName)
+
+    def addDefsDeclarations(self):
+        for defData in self.__sortedDefs:
+            self.__addDefDeclaration(defData)
+
+    def addDefs(self):
+        for defData in self.__sortedDefs:
+            self.__addDef(defData)
+
+    def startMain(self):
+        self.write('int main() {')
+        self.__indentLevel += 1
+        self.write('std::ofstream {outIO}({outFile}, std::ios::binary);'.format(
+            outIO=self._OUT_IO,
+            outFile=getString(self._OUT_FILE)
+        ))
+
+    def outFileWrite(self, data):
+        self.__ioWrite(self._OUT_IO, data)
+
+    def coutWrite(self, data):
+        self.__ioWrite(self._COUT_IO, data)
+
+    def endMain(self):
+        self.write('out.close();')
+        self.newLine()
+        self.coutWrite(getString('Definitions info wroted to "{outFile}"'.format(outFile=self._OUT_FILE)))
+        self.coutWrite(getString('---DONE---'))
+        self.newLine()
+        self.write('return 0;')
+        self.__indentLevel -= 1
+        self.write('}')
+
+    def __addDefDeclaration(self, defData):
+        self.write(self._DEFINITION_DECLARATION_FMT.format(
+            defType=defData['type'],
+            defName=defData['name']
+        ))
+
+    def __addDef(self, defData):
+        self.write(getDefCode(defData))
+        self.newLine()
+
+        # print 'Definition {defName} writed'.format(defName=defData['name'])
+
+    def __include(self, header):
+        self.write(self._INCLUDE_FMT.format(header=header))
+
+    def __ioWrite(self, io, data):
+        self.write(' << '.join((io, data, self._NEWLINE)) + ';')
 
 
 def getDictPrintCode(dictData, indentLevel=0, rawMode=False):
@@ -49,7 +126,7 @@ def getDictPrintCode(dictData, indentLevel=0, rawMode=False):
             indent=getIndented(indentLevel + 1, ''),
             fieldName=key,
             fieldValue=value,
-            delimiter=delimiter
+            delimiter=getString(delimiter)
         ) + '\n'
 
     rawJsonData += r'"{indent}}}"'.format(indent=indent)
@@ -62,44 +139,38 @@ def getDictPrintCode(dictData, indentLevel=0, rawMode=False):
         for line in rawJsonData.split('\n')
     )
 
-sortedDefs = sortDefinitions()
-with open(DEFINITIONS_FILE_NAME, 'wb') as defsFile:
-    for defData in sortedDefs:
-        declaration = _DEFINITION_DECLARATION_FMT.format(
-            defType=defData['type'],
-            defName=defData['name']
-        )
-        writeNewlined(defsFile, declaration)
-
-    writeRaw(defsFile, '\n')
-    writeNewlined(defsFile, _HEADER)
-
-    for defData in sortedDefs:
-        # print 'Definition %s writed' % defData['name']
-        writeNewlined(defsFile, getDefCode(defData))
-        writeRaw(defsFile, '\n')
-
-    writeRaw(defsFile, _MAIN_FUNCTION_START)
-
-    defsInfo = {
-        defData['name']: {
-            'size': 'sizeof({defName})'.format(defName=defData['name']),
-            'fieldsOffsets': {
-                fieldData.name: 'offsetof({defName}, {fieldName})'.format(
-                    defName=defData['name'], fieldName=fieldData.name
-                )
-                for fieldData in defData['fields']
-                if (not fieldData.bitCount if fieldData.fieldType == FieldType.SimpleField else True)
-            }
+"""
+defsInfo = {
+    getString(defData['name']): {
+        getString('size'): 'sizeof({defName})'.format(defName=defData['name']),
+        getString('fieldsOffsets'): {
+            'offsetof({defName}, {fieldName})'.format(
+                defName=defData['name'],
+                fieldName=fieldData.name
+            ): fieldData.name
+            for fieldData in defData['fields']
+            if (not fieldData.bitCount if fieldData.fieldType == FieldType.SimpleField else True)
         }
-        for defData in sortedDefs
-        if defData['type'] != 'enum'
     }
+    for defData in sortedDefs
+    if defData['type'] != 'enum'
+}
 
-    writeNewlined(defsFile, getDictPrintCode(defsInfo))
-    
-    writeRaw(defsFile, _MAIN_FUNCTION_END)
+writeNewlined(defsFile, getDictPrintCode(defsInfo))
+"""
+
+with CppSourceWriter(DEFINITIONS_FILE_NAME) as source:
+    source.addIncludes()
+    source.newLine()
+    source.addDefsDeclarations()
+    source.newLine()
+    source.pragma('pack', 'push, 1')
+    source.newLine()
+    source.addDefs()
+    source.newLine()
+    source.pragma('pack', 'pop')
+    source.newLine()
+    source.startMain()
 
 
-print '{fileName} was generated'.format(fileName=DEFINITIONS_FILE_NAME)
-print '---DONE---'
+    source.endMain()
